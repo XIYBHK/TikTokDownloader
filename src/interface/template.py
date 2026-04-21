@@ -35,12 +35,14 @@ class API:
         "update_version_code": "170400",
         "pc_client_type": "1",
         "pc_libra_divert": "Windows",
+        "support_h265": "1",
+        "support_dash": "1",
         "version_code": "290100",
         "version_name": "29.1.0",
         "cookie_enabled": "true",
         "screen_width": "1536",
         "screen_height": "864",
-        "browser_language": "zh-SG",
+        "browser_language": "zh-CN",
         "browser_platform": "Win32",
         "browser_name": "Chrome",
         "browser_version": "139.0.0.0",
@@ -72,7 +74,6 @@ class API:
         self.headers = params.headers.copy()
         self.log = params.logger
         self.ab = params.ab
-        self.xb = params.xb
         self.console = params.console
         self.api = ""
         self.proxy = proxy
@@ -95,6 +96,13 @@ class API:
         self,
     ) -> dict:
         return self.params
+
+    def __generate_params(
+        self,
+    ) -> dict:
+        params = self.generate_params()
+        params["msToken"] = params.pop("msToken")
+        return params
 
     def generate_data(self, *args, **kwargs) -> dict:
         return {}
@@ -161,7 +169,7 @@ class API:
     ):
         if data := await self.request_data(
             self.api,
-            params=params() or self.generate_params(),
+            params=params() or self.__generate_params(),
             data=data() or self.generate_data(),
             method=method,
             headers=headers,
@@ -429,6 +437,7 @@ class API:
         if params:
             params = urlencode(
                 params,
+                safe="=",
                 quote_via=quote,
             )
             params += f"&a_bogus={self.ab.get_value(params, method)}"
@@ -450,9 +459,13 @@ class API:
         server_mode: bool = False,
     ) -> None:
         if server_mode:
-            cls.progress_object = cls.__fake_progress_object
+            cls._progress_factory = cls.__fake_progress_object
         else:
-            cls.progress_object = cls.__general_progress_object
+            cls._progress_factory = cls.__general_progress_object
+
+    def progress_object(self):
+        factory = getattr(self, "_progress_factory", self.__general_progress_object)
+        return factory()
 
     def __general_progress_object(self):
         return Progress(
@@ -506,6 +519,7 @@ class APITikTok(API):
         "data_collection_enabled": "true",
         "device_id": "",
         "device_platform": "web_pc",
+        "enable_cache": "true",
         "focus_state": "true",
         "from_page": "user",
         "history_len": "4",
@@ -513,9 +527,9 @@ class APITikTok(API):
         "is_page_visible": "true",
         "language": "en",
         "os": "windows",
-        "priority_region": "CN",
+        "priority_region": "US",
         "referer": "",
-        "region": "JP",
+        "region": "US",
         "screen_height": "864",
         "screen_width": "1536",
         "tz_name": "Asia/Shanghai",
@@ -533,6 +547,8 @@ class APITikTok(API):
         **kwargs,
     ):
         super().__init__(params, cookie, proxy, *args, **kwargs)
+        self.xb = params.xb
+        self.xg = params.xg
         self.headers = params.headers_tiktok.copy()
         self.cookie = cookie
         self.client: AsyncClient = params.client_tiktok
@@ -571,12 +587,15 @@ class APITikTok(API):
         if params:
             params = urlencode(
                 params,
+                safe="=",
                 quote_via=quote,
             )
-            params += f"&X-Bogus={
-                self.xb.get_x_bogus(
-                    params, number, self.headers.get('User-Agent', USERAGENT)
-                )
-            }"
+            xb = self.xb.get_x_bogus(
+                params, number, self.headers.get("User-Agent", USERAGENT)
+            )
+            xg = self.xg.generate(
+                params, user_agent=self.headers.get("User-Agent", USERAGENT)
+            )
+            params += f"&X-Bogus={xb}&X-Gnarly={xg}"
             return params
         return ""
